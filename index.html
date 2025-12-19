@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Vue App</title>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+
+    <style>
+        /* Aapka CSS yahan aayega */
+        body { font-family: sans-serif; padding: 20px; }
+        input, select { margin-bottom: 10px; display: block; padding: 8px; width: 100%; max-width: 300px; }
+        button { padding: 10px; cursor: pointer; background-color: #42b883; color: white; border: none; }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <h1>{{ isOnline ? '✅ Online' : '❌ Offline' }}</h1>
+        <input v-model="formData.name" placeholder="Name">
+        <button @click="saveToLocal">Save Data</button>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, onMounted } = Vue;
+
+        // Dexie Database Setup
+        const db = new Dexie("MyOfflineApp");
+        db.version(1).stores({
+        users: '++id, name, age, city, synced' // 'synced' column add kiya (0 = No, 1 = Yes)
+        });
+
+        createApp({
+        setup() {
+            const formData = reactive({ name: '', age: null, city: '' });
+            const allUsers = ref([]);
+            const isOnline = ref(navigator.onLine);
+            const GOOGLE_URL = "https://script.google.com/macros/s/AKfycbzZ1idagx-tTUDwNRaHbV0AEyPC5BtsJyRwxA0AoHGtqOqnX22GuVnoFoPNBSp3Bps/exec"; // <--- Yahan apna URL dalein
+
+            // 1. Database se list refresh karna
+            const refreshData = async () => {
+            allUsers.value = await db.users.toArray();
+            };
+
+            // 2. Local Save (Status 'synced: 0' ke saath)
+            const saveToLocal = async () => {
+            await db.users.add({ ...formData, synced: 0 });
+            formData.name = ''; formData.age = null; formData.city = '';
+            await refreshData();
+            
+            // Agar internet hai toh turant sync koshish karo
+            if (isOnline.value) syncWithSheets();
+            };
+
+            // 3. SYNC LOGIC: Google Sheets bhejnah
+            const syncWithSheets = async () => {
+            // Sirf woh uthao jo sync nahi huye (synced == 0)
+            const unsyncedData = await db.users.where('synced').equals(0).toArray();
+
+            for (let item of unsyncedData) {
+                try {
+                const response = await fetch(GOOGLE_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Google Script ke liye zaroori hai
+                    body: JSON.stringify(item)
+                });
+
+                // Sync kamyab hone par status badal do
+                await db.users.update(item.id, { synced: 1 });
+                console.log(`Synced: ${item.name}`);
+                } catch (error) {
+                console.error("Sync error:", error);
+                }
+            }
+            await refreshData();
+            };
+
+            // 4. Online aate hi apne aap sync shuru karein
+            onMounted(() => {
+            refreshData();
+            window.addEventListener('online', () => {
+                isOnline.value = true;
+                syncWithSheets(); // Internet aate hi sync chalao!
+            });
+            window.addEventListener('offline', () => isOnline.value = false);
+            });
+
+            return { formData, saveToLocal, allUsers, isOnline, syncWithSheets };
+        }
+        }).mount('#app');
+
+        if ('serviceWorker' in navigator) {
+    
+            // 2. Page load hone ka wait karo
+            window.addEventListener('load', () => {
+            
+            // 3. sw.js file ko register karo
+            navigator.serviceWorker.register('./sw.js')
+                .then((registration) => {
+                console.log('Service Worker registered with scope:', registration.scope);
+                })
+                .catch((error) => {
+                console.log('Service Worker registration failed:', error);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
