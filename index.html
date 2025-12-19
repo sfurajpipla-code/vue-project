@@ -3,110 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline Vue App</title>
-
+    <title>Offline Data App</title>
+    
+    <link rel="manifest" href="manifest.json">
+    
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-
     <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
 
     <style>
-        /* Aapka CSS yahan aayega */
-        body { font-family: sans-serif; padding: 20px; }
-        input, select { margin-bottom: 10px; display: block; padding: 8px; width: 100%; max-width: 300px; }
-        button { padding: 10px; cursor: pointer; background-color: #42b883; color: white; border: none; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; padding: 20px; display: flex; justify-content: center; }
+        .app-container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h2 { color: #1a73e8; margin-top: 0; }
+        .status-badge { font-size: 0.8em; padding: 4px 8px; border-radius: 20px; font-weight: bold; }
+        input, select { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; transition: 0.3s; }
+        .btn-save { background-color: #1a73e8; color: white; }
+        .btn-sync { background-color: #34a853; color: white; }
+        .btn-delete { background-color: #ea4335; color: white; width: auto; padding: 5px 10px; font-size: 0.8em; }
+        ul { list-style: none; padding: 0; margin-top: 20px; }
+        li { background: #f8f9fa; padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; margin-bottom: 5px; }
+        .footer-text { font-size: 0.8em; color: #666; text-align: center; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="app">
-        <h1>{{ isOnline ? '✅ Online' : '❌ Offline' }}</h1>
-        <input v-model="formData.name" placeholder="Name">
-        <button @click="saveToLocal">Save Data</button>
-    </div>
+<div id="app" class="app-container">
+    <h2>Data Entry 
+        <span class="status-badge" :style="{ backgroundColor: isOnline ? '#e6f4ea' : '#fce8e6', color: isOnline ? '#137333' : '#c5221f' }">
+            {{ isOnline ? '● Online' : '● Offline' }}
+        </span>
+    </h2>
 
-    <script>
-        const { createApp, ref, reactive, onMounted } = Vue;
-
-        // Dexie Database Setup
-        const db = new Dexie("MyOfflineApp");
-        db.version(1).stores({
-        users: '++id, name, age, city, synced' // 'synced' column add kiya (0 = No, 1 = Yes)
-        });
-
-        createApp({
-        setup() {
-            const formData = reactive({ name: '', age: null, city: '' });
-            const allUsers = ref([]);
-            const isOnline = ref(navigator.onLine);
-            const GOOGLE_URL = "https://script.google.com/macros/s/AKfycbzZ1idagx-tTUDwNRaHbV0AEyPC5BtsJyRwxA0AoHGtqOqnX22GuVnoFoPNBSp3Bps/exec"; // <--- Yahan apna URL dalein
-
-            // 1. Database se list refresh karna
-            const refreshData = async () => {
-            allUsers.value = await db.users.toArray();
-            };
-
-            // 2. Local Save (Status 'synced: 0' ke saath)
-            const saveToLocal = async () => {
-            await db.users.add({ ...formData, synced: 0 });
-            formData.name = ''; formData.age = null; formData.city = '';
-            await refreshData();
-            
-            // Agar internet hai toh turant sync koshish karo
-            if (isOnline.value) syncWithSheets();
-            };
-
-            // 3. SYNC LOGIC: Google Sheets bhejnah
-            const syncWithSheets = async () => {
-            // Sirf woh uthao jo sync nahi huye (synced == 0)
-            const unsyncedData = await db.users.where('synced').equals(0).toArray();
-
-            for (let item of unsyncedData) {
-                try {
-                const response = await fetch(GOOGLE_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // Google Script ke liye zaroori hai
-                    body: JSON.stringify(item)
-                });
-
-                // Sync kamyab hone par status badal do
-                await db.users.update(item.id, { synced: 1 });
-                console.log(`Synced: ${item.name}`);
-                } catch (error) {
-                console.error("Sync error:", error);
-                }
-            }
-            await refreshData();
-            };
-
-            // 4. Online aate hi apne aap sync shuru karein
-            onMounted(() => {
-            refreshData();
-            window.addEventListener('online', () => {
-                isOnline.value = true;
-                syncWithSheets(); // Internet aate hi sync chalao!
-            });
-            window.addEventListener('offline', () => isOnline.value = false);
-            });
-
-            return { formData, saveToLocal, allUsers, isOnline, syncWithSheets };
-        }
-        }).mount('#app');
-
-        if ('serviceWorker' in navigator) {
+    <input v-model="formData.name" placeholder="Enter Full Name">
+    <input v-model.number="formData.age" type="number" placeholder="Enter Age">
     
-            // 2. Page load hone ka wait karo
-            window.addEventListener('load', () => {
-            
-            // 3. sw.js file ko register karo
+    <select v-model="formData.city">
+        <option value="" disabled>Select City</option>
+        <option v-for="city in cities" :key="city" :value="city">{{ city }}</option>
+    </select>
+
+    <button class="btn-save" @click="saveToLocal">Save Locally</button>
+    <button class="btn-sync" @click="handleSync">Sync to Google Sheets</button>
+
+    <hr>
+
+    <h3>Recent Entries (Max 3)</h3>
+    <ul>
+        <li v-for="user in lastThreeEntries" :key="user.id">
+            <div>
+                <strong>{{ user.name }}</strong> <br>
+                <small>{{ user.city }} (Age: {{ user.age }})</small>
+            </div>
+            <button class="btn-delete" @click="deleteEntry(user.id)">Delete</button>
+        </li>
+    </ul>
+    <p class="footer-text" v-if="totalCount > 3">And {{ totalCount - 3 }} more entries saved locally.</p>
+    <p class="footer-text" v-if="totalCount === 0">No local data found.</p>
+</div>
+
+<script>
+    // --- SERVICE WORKER REGISTRATION ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
-                .then((registration) => {
-                console.log('Service Worker registered with scope:', registration.scope);
-                })
-                .catch((error) => {
-                console.log('Service Worker registration failed:', error);
-                });
+                .then(reg => console.log('SW Registered'))
+                .catch(err => console.log('SW Failed', err));
+        });
+    }
+
+    // --- VUE APP LOGIC ---
+    const { createApp, ref, reactive, onMounted } = Vue;
+
+    // Dexie DB Setup
+    const db = new Dexie("MyOfflineApp");
+    db.version(1).stores({ users: '++id, name, age, city' });
+
+    createApp({
+        setup() {
+            const GOOGLE_URL = "YOUR_APPS_SCRIPT_URL_HERE"; // <--- APNA URL YAHAN DALEIN
+            const isOnline = ref(navigator.onLine);
+            const cities = ref(['Delhi', 'Mumbai', 'Bangalore', 'Pune', 'Kolkata']);
+            
+            const formData = reactive({ name: '', age: null, city: '' });
+            const lastThreeEntries = ref([]);
+            const totalCount = ref(0);
+
+            // UI update function
+            const refreshUI = async () => {
+                lastThreeEntries.value = await db.users.orderBy('id').reverse().limit(3).toArray();
+                totalCount.value = await db.users.count();
+            };
+
+            // Save to Dexie
+            const saveToLocal = async () => {
+                if(!formData.name || !formData.age || !formData.city) {
+                    alert("Please fill all fields!");
+                    return;
+                }
+                await db.users.add({ ...formData });
+                formData.name = ''; formData.age = null; formData.city = '';
+                await refreshUI();
+                alert("Data saved locally!");
+            };
+
+            // Delete specific entry
+            const deleteEntry = async (id) => {
+                if(confirm("Delete this entry?")) {
+                    await db.users.delete(id);
+                    await refreshUI();
+                }
+            };
+
+            // Sync with Google Sheets
+            const handleSync = async () => {
+                if (!navigator.onLine) {
+                    alert("No Internet Connection! Sync failed.");
+                    return;
+                }
+
+                const allData = await db.users.toArray();
+                if (allData.length === 0) {
+                    alert("No data to sync.");
+                    return;
+                }
+
+                try {
+                    for (let item of allData) {
+                        // Secret Token agar aapne script mein lagaya hai
+                        item.token = "MeraSecretKey123"; 
+
+                        await fetch(GOOGLE_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            body: JSON.stringify(item)
+                        });
+                    }
+                    
+                    // Clear database after successful sync
+                    await db.users.clear();
+                    await refreshUI();
+                    alert("Successfully synced and local storage cleared!");
+                } catch (error) {
+                    alert("Sync failed. Check Console for errors.");
+                    console.error(error);
+                }
+            };
+
+            onMounted(() => {
+                refreshUI();
+                window.addEventListener('online', () => isOnline.value = true);
+                window.addEventListener('offline', () => isOnline.value = false);
             });
+
+            return { 
+                formData, cities, isOnline, lastThreeEntries, 
+                totalCount, saveToLocal, deleteEntry, handleSync 
+            };
         }
-    </script>
+    }).mount('#app');
+
+    if ('serviceWorker' in navigator) {
+    
+    // 2. Page load hone ka wait karo
+    window.addEventListener('load', () => {
+      
+      // 3. sw.js file ko register karo
+      navigator.serviceWorker.register('./sw.js')
+        .then((registration) => {
+          console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch((error) => {
+          console.log('Service Worker registration failed:', error);
+        });
+    });
+  }
+</script>
+
 </body>
 </html>
