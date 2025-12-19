@@ -76,11 +76,11 @@
 
     // Dexie DB Setup
     const db = new Dexie("MyOfflineApp");
-    db.version(1).stores({ users: '++id, name, age, city' });
+    db.version(3).stores({ users: '++id, name, age, city' });
 
     createApp({
         setup() {
-            const GOOGLE_URL = "YOUR_APPS_SCRIPT_URL_HERE"; // <--- APNA URL YAHAN DALEIN
+            const GOOGLE_URL = "https://script.google.com/macros/s/AKfycbzZ1idagx-tTUDwNRaHbV0AEyPC5BtsJyRwxA0AoHGtqOqnX22GuVnoFoPNBSp3Bps/exec"; // 
             const isOnline = ref(navigator.onLine);
             const cities = ref(['Delhi', 'Mumbai', 'Bangalore', 'Pune', 'Kolkata']);
             
@@ -181,3 +181,4 @@
 
 </body>
 </html>
+
